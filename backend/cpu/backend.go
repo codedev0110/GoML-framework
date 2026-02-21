@@ -183,12 +183,12 @@ func outStrides(shape core.Shape) core.Strides {
 	return core.ContiguousStrides(shape, 4)
 }
 
-func (b *cpuBackend) Add(dst, a, b backend.Storage, aShape, bShape core.Shape, aStrides, bStrides core.Strides, outShape core.Shape) error {
+func (b *cpuBackend) Add(dst, a, bStorage backend.Storage, aShape, bShape core.Shape, aStrides, bStrides core.Strides, outShape core.Shape) error {
 	outStr := outStrides(outShape)
 	n, get := broadcastIter(outShape, aShape, bShape, aStrides, bStrides, outStr)
 	da := floatSlice(dst, n)
 	pa := floatSlice(a, aShape.NumElements())
-	pb := floatSlice(b, bShape.NumElements())
+	pb := floatSlice(bStorage, bShape.NumElements())
 	for i := 0; i < n; i++ {
 		ai, bi := get(i)
 		da[i] = pa[ai] + pb[bi]
@@ -196,12 +196,12 @@ func (b *cpuBackend) Add(dst, a, b backend.Storage, aShape, bShape core.Shape, a
 	return nil
 }
 
-func (b *cpuBackend) Sub(dst, a, b backend.Storage, aShape, bShape core.Shape, aStrides, bStrides core.Strides, outShape core.Shape) error {
+func (b *cpuBackend) Sub(dst, a, bStorage backend.Storage, aShape, bShape core.Shape, aStrides, bStrides core.Strides, outShape core.Shape) error {
 	outStr := outStrides(outShape)
 	n, get := broadcastIter(outShape, aShape, bShape, aStrides, bStrides, outStr)
 	da := floatSlice(dst, n)
 	pa := floatSlice(a, aShape.NumElements())
-	pb := floatSlice(b, bShape.NumElements())
+	pb := floatSlice(bStorage, bShape.NumElements())
 	for i := 0; i < n; i++ {
 		ai, bi := get(i)
 		da[i] = pa[ai] - pb[bi]
@@ -209,12 +209,12 @@ func (b *cpuBackend) Sub(dst, a, b backend.Storage, aShape, bShape core.Shape, a
 	return nil
 }
 
-func (b *cpuBackend) Mul(dst, a, b backend.Storage, aShape, bShape core.Shape, aStrides, bStrides core.Strides, outShape core.Shape) error {
+func (b *cpuBackend) Mul(dst, a, bStorage backend.Storage, aShape, bShape core.Shape, aStrides, bStrides core.Strides, outShape core.Shape) error {
 	outStr := outStrides(outShape)
 	n, get := broadcastIter(outShape, aShape, bShape, aStrides, bStrides, outStr)
 	da := floatSlice(dst, n)
 	pa := floatSlice(a, aShape.NumElements())
-	pb := floatSlice(b, bShape.NumElements())
+	pb := floatSlice(bStorage, bShape.NumElements())
 	for i := 0; i < n; i++ {
 		ai, bi := get(i)
 		da[i] = pa[ai] * pb[bi]
@@ -222,12 +222,12 @@ func (b *cpuBackend) Mul(dst, a, b backend.Storage, aShape, bShape core.Shape, a
 	return nil
 }
 
-func (b *cpuBackend) Div(dst, a, b backend.Storage, aShape, bShape core.Shape, aStrides, bStrides core.Strides, outShape core.Shape) error {
+func (b *cpuBackend) Div(dst, a, bStorage backend.Storage, aShape, bShape core.Shape, aStrides, bStrides core.Strides, outShape core.Shape) error {
 	outStr := outStrides(outShape)
 	n, get := broadcastIter(outShape, aShape, bShape, aStrides, bStrides, outStr)
 	da := floatSlice(dst, n)
 	pa := floatSlice(a, aShape.NumElements())
-	pb := floatSlice(b, bShape.NumElements())
+	pb := floatSlice(bStorage, bShape.NumElements())
 	for i := 0; i < n; i++ {
 		ai, bi := get(i)
 		da[i] = pa[ai] / pb[bi]
@@ -360,10 +360,10 @@ func (b *cpuBackend) Mean(dst, src backend.Storage, srcShape core.Shape, srcStri
 	return nil
 }
 
-func (b *cpuBackend) MatMul(dst, a, b backend.Storage, batchSize, M, N, K int) error {
+func (b *cpuBackend) MatMul(dst, a, bStorage backend.Storage, batchSize, M, N, K int) error {
 	d := floatSlice(dst, batchSize*M*N)
 	pa := floatSlice(a, batchSize*M*K)
-	pb := floatSlice(b, batchSize*K*N)
+	pb := floatSlice(bStorage, batchSize*K*N)
 	for batch := 0; batch < batchSize; batch++ {
 		aBase := batch * M * K
 		bBase := batch * K * N
@@ -504,11 +504,11 @@ func (b *cpuBackend) RoPE(dst, x backend.Storage, shape core.Shape, strides core
 	// per (batch..., seq, head_dim): apply rotation per position
 	rowSize := headDim
 	rowsPerSeq := n / (seqDim * rowSize)
-	for b := 0; b < rowsPerSeq; b++ {
+	for bi := 0; bi < rowsPerSeq; bi++ {
 		for s := 0; s < seqLen && (startPos+s) < seqDim; s++ {
 			pos := startPos + s
 			theta := float64(pos) * invFreq[0]
-			baseOff := (b*seqDim+pos)*rowSize + 0
+			baseOff := (bi*seqDim+pos)*rowSize + 0
 			for i := 0; i < half; i++ {
 				theta := float64(pos) * invFreq[i]
 				cos := float32(math.Cos(theta))
@@ -529,11 +529,11 @@ func (b *cpuBackend) ScaledDotProductAttention(dst, q, k, v backend.Storage, bat
 	kF := floatSlice(k, batch*heads*seq*headDim)
 	vF := floatSlice(v, batch*heads*seq*headDim)
 	dstF := floatSlice(dst, batch*heads*seq*headDim)
-	for b := 0; b < batch; b++ {
+	for bi := 0; bi < batch; bi++ {
 		for h := 0; h < heads; h++ {
-			qBase := (b*heads+h)*seq*headDim
-			kBase := (b*heads+h)*seq*headDim
-			vBase := (b*heads+h)*seq*headDim
+			qBase := (bi*heads+h)*seq*headDim
+			kBase := (bi*heads+h)*seq*headDim
+			vBase := (bi*heads+h)*seq*headDim
 			// scores = Q @ K^T  [seq, seq]
 			scores := make([]float32, seq*seq)
 			for i := 0; i < seq; i++ {
@@ -567,7 +567,7 @@ func (b *cpuBackend) ScaledDotProductAttention(dst, q, k, v backend.Storage, bat
 				}
 			}
 			// out = scores @ V
-			outBase := (b*heads+h)*seq*headDim
+			outBase := (bi*heads+h)*seq*headDim
 			for i := 0; i < seq; i++ {
 				for d := 0; d < headDim; d++ {
 					var s float32
@@ -598,12 +598,12 @@ func (b *cpuBackend) Arange(dst backend.Storage, nElems int, start, step float32
 	return nil
 }
 
-func (b *cpuBackend) Where(dst, cond, a, b backend.Storage, nElems int) error {
-	// cond as float32: nonzero -> a else b
+func (b *cpuBackend) Where(dst, cond, a, bStorage backend.Storage, nElems int) error {
+	// cond as float32: nonzero -> a else bStorage
 	d := floatSlice(dst, nElems)
 	c := floatSlice(cond, nElems)
 	pa := floatSlice(a, nElems)
-	pb := floatSlice(b, nElems)
+	pb := floatSlice(bStorage, nElems)
 	for i := range d {
 		if c[i] != 0 {
 			d[i] = pa[i]
