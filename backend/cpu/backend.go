@@ -266,9 +266,6 @@ func (b *cpuBackend) Sum(dst, src backend.Storage, srcShape core.Shape, srcStrid
 		for j := 0; j < after; j++ {
 			var s float32
 			for k := 0; k < dimSize; k++ {
-				// flat index into src
-				srcIdx := i*after*dimSize + k*after + j
-				// more general: need to compute from strides
 				off := 0
 				ii, jj := i, j
 				for d := 0; d < axis; d++ {
@@ -507,7 +504,6 @@ func (b *cpuBackend) RoPE(dst, x backend.Storage, shape core.Shape, strides core
 	for bi := 0; bi < rowsPerSeq; bi++ {
 		for s := 0; s < seqLen && (startPos+s) < seqDim; s++ {
 			pos := startPos + s
-			theta := float64(pos) * invFreq[0]
 			baseOff := (bi*seqDim+pos)*rowSize + 0
 			for i := 0; i < half; i++ {
 				theta := float64(pos) * invFreq[i]
