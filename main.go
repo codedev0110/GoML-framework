@@ -1,38 +1,49 @@
-// Package main is a test harness for GoML: create model, forward pass, verify logits.
+// Package main — GoML: mətndən giriş alır, model forward edir, logits və nümunə çıxış verir.
 package main
 
 import (
 	"fmt"
 	"log"
+	"os"
 
-	_ "github.com/djeday123/goml/backend/cpu" // register CPU backend
+	_ "github.com/djeday123/goml/backend/cpu"
 	"github.com/djeday123/goml/nn"
 	"github.com/djeday123/goml/tensor"
+	"github.com/djeday123/goml/tokenizer"
 )
 
 func main() {
-	// Small config
+	// Giriş: əgər arqument varsa onu götür, yoxdursa default mətn
+	inputText := "hello"
+	if len(os.Args) > 1 {
+		inputText = os.Args[1]
+	}
+
 	vocabSize := 256
 	embedDim := 64
 	numHeads := 4
 	numLayers := 2
-	maxSeqLen := 8
-	batchSize := 2
-	seqLen := 4
+	maxSeqLen := 64
 
 	model, err := nn.InitSmall(vocabSize, embedDim, numHeads, numLayers, maxSeqLen)
 	if err != nil {
-		log.Fatalf("InitSmall: %v", err)
+		log.Fatalf("Model yüklənmədi: %v", err)
 	}
 
-	// Dummy input: [batch, seq] int64
-	indices := make([]int64, batchSize*seqLen)
-	for i := range indices {
-		indices[i] = int64(i % vocabSize)
+	tok := tokenizer.NewByteLevel()
+	ids := tok.Encode(inputText)
+	if len(ids) == 0 {
+		ids = []int64{0}
 	}
-	input, err := tensor.FromInt64(indices, batchSize, seqLen)
+	if len(ids) > maxSeqLen {
+		ids = ids[:maxSeqLen]
+	}
+
+	// Tensor: [1, seqLen] — bir batch, bir sətir
+	seqLen := len(ids)
+	input, err := tensor.FromInt64(ids, 1, seqLen)
 	if err != nil {
-		log.Fatalf("FromInt64: %v", err)
+		log.Fatalf("Input tensor: %v", err)
 	}
 
 	logits, err := model.Forward(input)
@@ -40,21 +51,25 @@ func main() {
 		log.Fatalf("Forward: %v", err)
 	}
 
-	// Verify shape: [batch, seq, vocabSize]
-	if len(logits.Shape) != 3 || logits.Shape[0] != batchSize || logits.Shape[1] != seqLen || logits.Shape[2] != vocabSize {
-		log.Fatalf("logits shape = %v, want [%d, %d, %d]", logits.Shape, batchSize, seqLen, vocabSize)
-	}
+	// Çıxış
+	fmt.Println("--- Giriş ---")
+	fmt.Println("Mətn:", inputText)
+	fmt.Println("Token ID-lər:", ids)
+	fmt.Println()
+	fmt.Println("--- Model çıxışı ---")
+	fmt.Println("Logits shape:", logits.Shape) // [1, seqLen, 256]
 
-	// Sanity: logits are finite
-	f := logits.Float32()
-	for i, v := range f {
-		if i >= 10 {
-			break
-		}
-		if v != v || v*v < 0 { // NaN or Inf
-			log.Fatalf("logits[%d] = %f not finite", i, v)
+	// Son pozisiyada ən çox ehtimal olunan token (sadə “növbəti simvol” proqnozu)
+	logitsF := logits.Float32()
+	lastPos := (seqLen - 1) * vocabSize
+	bestIdx := 0
+	for i := 1; i < vocabSize; i++ {
+		if logitsF[lastPos+i] > logitsF[lastPos+bestIdx] {
+			bestIdx = i
 		}
 	}
-
-	fmt.Println("OK: forward pass produced logits shape", logits.Shape)
+	nextToken := tok.Decode([]int64{int64(bestIdx)})
+	fmt.Println("Növbəti token (argmax):", bestIdx, "→", nextToken)
+	fmt.Println()
+	fmt.Println("OK.")
 }
