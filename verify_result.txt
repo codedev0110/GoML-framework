@@ -1,0 +1,36 @@
+﻿===============================================================
+  GoML Framework -- Phase 1-3 Verification Report
+===============================================================
+
+
+===============================================================
+  SUMMARY REPORT
+===============================================================
+
+  [OK] Tensor creation
+        shape=[1 8] dtype=int64 elements=8
+  [OK] Model init
+        vocabSize=256 dim=16 heads=2 layers=1 params=21 tensors
+  [OK] RequiresGrad on all params
+        21/21 have RequiresGrad=true
+  [OK] Forward pass output shape
+        expected=[1 8 256] actual=[1 8 256]
+  [OK] Logits finite
+        2048 values, first5=0.0000,0.0000,0.0000,0.0000,0.0000
+  [OK] Flatten logits
+        [1,8,256] -> [8,256]
+  [OK] Loss finite & positive
+        loss=5.545177
+  [OK] Logits gradient populated
+        grad_shape=[8 256] sum=0.000000 first3=0.000488,-0.124512,0.000488
+  [OK] All params have gradient
+        21/21 params have .Grad
+  [OK] Optimizer step (AdamW)
+        OutputHead.W[0]: before=0.02000000 after=-0.08001991 delta=-0.10001990
+  [OK] Embedding param updated
+        Table[0]: before=-0.09000991 after=-0.18991980
+
+---------------------------------------------------------------
+  Total: 11/11 checks passed
+  Status: ALL PASSED
+===============================================================

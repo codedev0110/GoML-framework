@@ -10,9 +10,9 @@ import (
 
 // Linear is y = x @ W^T + bias. InSize, OutSize; W is [OutSize, InSize], bias [OutSize].
 type Linear struct {
-	W      *tensor.Tensor // [OutSize, InSize]
-	Bias   *tensor.Tensor // [OutSize]
-	InSize int
+	W       *tensor.Tensor // [OutSize, InSize]
+	Bias    *tensor.Tensor // [OutSize]
+	InSize  int
 	OutSize int
 }
 
@@ -26,12 +26,6 @@ func NewLinear(inSize, outSize int, W, bias *tensor.Tensor) (*Linear, error) {
 
 // Forward computes x @ W^T + bias. x: [..., InSize], out: [..., OutSize].
 func (l *Linear) Forward(x *tensor.Tensor) (*tensor.Tensor, error) {
-	// x [batch..., InSize], W [OutSize, InSize]. x @ W^T = [batch..., OutSize].
-	// So we need matmul(x, W^T). W^T is [InSize, OutSize]. So matmul(x, W^T): x [..., InSize], W^T [InSize, OutSize].
-	// We have W [OutSize, InSize]. So we do x @ W^T by doing matmul(x, W) with W used as "W^T" i.e. we need
-	// output[i,j] = sum_k x[i,k] * W^T[k,j] = sum_k x[i,k] * W[j,k]. So (x @ W^T) = matmul(x, W^T).
-	// Backend MatMul: A [..., M, K], B [..., K, N]. So we want A=x [batch, inSize], B=W^T [inSize, outSize].
-	// So we need to pass W transposed. W is [OutSize, InSize]; W^T is [InSize, OutSize].
 	wt, err := l.W.Transpose()
 	if err != nil {
 		return nil, err
@@ -48,17 +42,23 @@ func (l *Linear) Forward(x *tensor.Tensor) (*tensor.Tensor, error) {
 		return nil, err
 	}
 	be.Fill(outStorage, outSize, 0)
-	// x [batch, InSize], W^T [InSize, OutSize] -> out [batch, OutSize]. batchSize=1.
 	be.MatMul(outStorage, x.Storage, wt.Storage, 1, batch, l.OutSize, l.InSize)
 	// Add bias: broadcast [OutSize] to [batch, OutSize].
 	biasStorage := l.Bias.Storage
 	biasShape := core.Shape{l.OutSize}
-	outShape := core.Shape{batch, l.OutSize}
+	flatOutShape := core.Shape{batch, l.OutSize}
 	biasStrides := core.ContiguousStrides(biasShape, 4)
-	outStrides := core.ContiguousStrides(outShape, 4)
+	flatOutStrides := core.ContiguousStrides(flatOutShape, 4)
 	addStorage, _ := be.Alloc(outSize * 4)
-	be.Add(addStorage, outStorage, biasStorage, outShape, biasShape, outStrides, biasStrides, outShape)
+	be.Add(addStorage, outStorage, biasStorage, flatOutShape, biasShape, flatOutStrides, biasStrides, flatOutShape)
 	be.Free(outStorage)
-	out := tensor.New(addStorage, outShape, outStrides, core.Float32)
+
+	// Restore original leading dimensions: if input was [B,S,D], output is [B,S,OutSize]
+	finalShape := make(core.Shape, len(x.Shape))
+	copy(finalShape, x.Shape)
+	finalShape[len(finalShape)-1] = l.OutSize
+	finalStrides := core.ContiguousStrides(finalShape, 4)
+
+	out := tensor.New(addStorage, finalShape, finalStrides, core.Float32)
 	return out, nil
 }
