@@ -23,16 +23,16 @@ func NewLayerNorm(gamma, beta *tensor.Tensor, eps float32) *LayerNorm {
 
 // Forward applies layer normalization.
 func (ln *LayerNorm) Forward(x *tensor.Tensor) (*tensor.Tensor, error) {
-	be, err := backend.GetForDevice(x.Storage.Device())
+	be, err := backend.GetForDevice(x.Storage().Device())
 	if err != nil {
 		return nil, err
 	}
-	lastDim := x.Shape[len(x.Shape)-1]
-	outStorage, _ := be.Alloc(x.NumElements() * 4)
-	meanStorage, _ := be.Alloc((x.NumElements() / lastDim) * 4)
-	varStorage, _ := be.Alloc((x.NumElements() / lastDim) * 4)
-	be.LayerNorm(outStorage, x.Storage, ln.Gamma.Storage, ln.Beta.Storage, meanStorage, varStorage, x.Shape, x.Strides, ln.Eps)
+	lastDim := x.Shape()[len(x.Shape())-1]
+	outStorage, _ := be.Alloc(x.NumElements() * int(core.Float32.Size()))
+	meanStorage, _ := be.Alloc((x.NumElements() / lastDim) * int(core.Float32.Size()))
+	varStorage, _ := be.Alloc((x.NumElements() / lastDim) * int(core.Float32.Size()))
+	be.LayerNorm(outStorage, x.Storage(), ln.Gamma.Storage(), ln.Beta.Storage(), meanStorage, varStorage, x.Shape(), x.Strides(), ln.Eps)
 	be.Free(meanStorage)
 	be.Free(varStorage)
-	return tensor.New(outStorage, x.Shape, x.Strides, core.Float32), nil
+	return tensor.NewTensor(outStorage, x.Shape(), core.Float32), nil
 }

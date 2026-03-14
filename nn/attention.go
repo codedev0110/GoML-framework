@@ -38,13 +38,13 @@ func NewAttention(numHeads, headDim int, q, k, v, out *Linear, ropeBase float64)
 
 // Forward runs attention. x [batch, seq, inDim]. Returns [batch, seq, inDim].
 func (a *Attention) Forward(x *tensor.Tensor) (*tensor.Tensor, error) {
-	batch := x.Shape[0]
-	seq := x.Shape[1]
+	batch := x.Shape()[0]
+	seq := x.Shape()[1]
 	inDim := a.NumHeads * a.HeadDim
-	if len(x.Shape) < 3 || x.Shape[2] != inDim {
+	if x.NDim() < 3 || x.Shape()[2] != inDim {
 		return nil, fmt.Errorf("attention: x last dim must be %d", inDim)
 	}
-	be, err := backend.GetForDevice(x.Storage.Device())
+	be, err := backend.GetForDevice(x.Storage().Device())
 	if err != nil {
 		return nil, err
 	}
@@ -62,28 +62,27 @@ func (a *Attention) Forward(x *tensor.Tensor) (*tensor.Tensor, error) {
 	}
 	// q,k,v are [batch*seq, inDim]. Permute to [batch, numHeads, seq, headDim] for RoPE and SDPA.
 	qShape := core.Shape{batch, a.NumHeads, seq, a.HeadDim}
-	qStrides := core.ContiguousStrides(qShape, 4)
-	ropeQ, _ := be.Alloc(batch * a.NumHeads * seq * a.HeadDim * 4)
-	ropeK, _ := be.Alloc(batch * a.NumHeads * seq * a.HeadDim * 4)
-	vHSD, _ := be.Alloc(batch * a.NumHeads * seq * a.HeadDim * 4)
-	permuteBSEQToBHSD(ropeQ, q.Storage, batch, seq, a.NumHeads, a.HeadDim)
-	permuteBSEQToBHSD(ropeK, k.Storage, batch, seq, a.NumHeads, a.HeadDim)
-	permuteBSEQToBHSD(vHSD, v.Storage, batch, seq, a.NumHeads, a.HeadDim)
+	qStrides := core.ContiguousStrides(qShape, uintptr(core.Float32.Size()))
+	ropeQ, _ := be.Alloc(batch * a.NumHeads * seq * a.HeadDim * int(core.Float32.Size()))
+	ropeK, _ := be.Alloc(batch * a.NumHeads * seq * a.HeadDim * int(core.Float32.Size()))
+	vHSD, _ := be.Alloc(batch * a.NumHeads * seq * a.HeadDim * int(core.Float32.Size()))
+	permuteBSEQToBHSD(ropeQ, q.Storage(), batch, seq, a.NumHeads, a.HeadDim)
+	permuteBSEQToBHSD(ropeK, k.Storage(), batch, seq, a.NumHeads, a.HeadDim)
+	permuteBSEQToBHSD(vHSD, v.Storage(), batch, seq, a.NumHeads, a.HeadDim)
 	be.RoPE(ropeQ, ropeQ, qShape, qStrides, a.RoPEBase, 0, seq)
 	be.RoPE(ropeK, ropeK, qShape, qStrides, a.RoPEBase, 0, seq)
 	attnOutSize := batch * a.NumHeads * seq * a.HeadDim
-	attnOut, _ := be.Alloc(attnOutSize * 4)
+	attnOut, _ := be.Alloc(attnOutSize * int(core.Float32.Size()))
 	be.ScaledDotProductAttention(attnOut, ropeQ, ropeK, vHSD, batch, a.NumHeads, seq, a.HeadDim, true)
 	be.Free(vHSD)
 	be.Free(ropeQ)
 	be.Free(ropeK)
 	// Permute [batch, heads, seq, headDim] -> [batch, seq, inDim] for out projection
-	outStorage, _ := be.Alloc(batch * seq * inDim * 4)
+	outStorage, _ := be.Alloc(batch * seq * inDim * int(core.Float32.Size()))
 	permuteBHSDToBSHD(outStorage, attnOut, batch, a.NumHeads, seq, a.HeadDim)
 	be.Free(attnOut)
 	outShape := core.Shape{batch, seq, inDim}
-	outStrides := core.ContiguousStrides(outShape, 4)
-	outTensor := tensor.New(outStorage, outShape, outStrides, core.Float32)
+	outTensor := tensor.NewTensor(outStorage, outShape, core.Float32)
 	return a.OutProj.Forward(outTensor)
 }
 

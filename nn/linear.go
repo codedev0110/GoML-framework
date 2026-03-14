@@ -26,39 +26,38 @@ func NewLinear(inSize, outSize int, W, bias *tensor.Tensor) (*Linear, error) {
 
 // Forward computes x @ W^T + bias. x: [..., InSize], out: [..., OutSize].
 func (l *Linear) Forward(x *tensor.Tensor) (*tensor.Tensor, error) {
-	wt, err := l.W.Transpose()
+	wt, err := l.W.Transpose(0, 1)
 	if err != nil {
 		return nil, err
 	}
 	// x: [..., InSize] -> treat as [batch, InSize] with batch = product of leading dims.
 	batch := x.NumElements() / l.InSize
-	be, err := backend.GetForDevice(x.Storage.Device())
+	be, err := backend.GetForDevice(x.Storage().Device())
 	if err != nil {
 		return nil, err
 	}
 	outSize := batch * l.OutSize
-	outStorage, err := be.Alloc(outSize * 4)
+	outStorage, err := be.Alloc(outSize * int(core.Float32.Size()))
 	if err != nil {
 		return nil, err
 	}
 	be.Fill(outStorage, outSize, 0)
-	be.MatMul(outStorage, x.Storage, wt.Storage, 1, batch, l.OutSize, l.InSize)
+	be.MatMul(outStorage, x.Storage(), wt.Storage(), 1, batch, l.OutSize, l.InSize)
 	// Add bias: broadcast [OutSize] to [batch, OutSize].
-	biasStorage := l.Bias.Storage
+	biasStorage := l.Bias.Storage()
 	biasShape := core.Shape{l.OutSize}
 	flatOutShape := core.Shape{batch, l.OutSize}
-	biasStrides := core.ContiguousStrides(biasShape, 4)
-	flatOutStrides := core.ContiguousStrides(flatOutShape, 4)
-	addStorage, _ := be.Alloc(outSize * 4)
+	biasStrides := core.ContiguousStrides(biasShape, uintptr(core.Float32.Size()))
+	flatOutStrides := core.ContiguousStrides(flatOutShape, uintptr(core.Float32.Size()))
+	addStorage, _ := be.Alloc(outSize * int(core.Float32.Size()))
 	be.Add(addStorage, outStorage, biasStorage, flatOutShape, biasShape, flatOutStrides, biasStrides, flatOutShape)
 	be.Free(outStorage)
 
 	// Restore original leading dimensions: if input was [B,S,D], output is [B,S,OutSize]
-	finalShape := make(core.Shape, len(x.Shape))
-	copy(finalShape, x.Shape)
+	finalShape := make(core.Shape, len(x.Shape()))
+	copy(finalShape, x.Shape())
 	finalShape[len(finalShape)-1] = l.OutSize
-	finalStrides := core.ContiguousStrides(finalShape, 4)
 
-	out := tensor.New(addStorage, finalShape, finalStrides, core.Float32)
+	out := tensor.NewTensor(addStorage, finalShape, core.Float32)
 	return out, nil
 }

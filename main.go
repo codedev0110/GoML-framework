@@ -57,10 +57,10 @@ func main() {
 	fmt.Println("Token ID-lər:", ids)
 	fmt.Println()
 	fmt.Println("--- Model çıxışı ---")
-	fmt.Println("Logits shape:", logits.Shape) // [1, seqLen, 256]
+	fmt.Println("Logits shape:", logits.Shape()) // [1, seqLen, 256]
 
 	// Son pozisiyada ən çox ehtimal olunan token (sadə “növbəti simvol” proqnozu)
-	logitsF := logits.Float32()
+	logitsF := logits.ToFloat32Slice()
 	lastPos := (seqLen - 1) * vocabSize
 	bestIdx := 0
 	for i := 1; i < vocabSize; i++ {

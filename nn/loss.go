@@ -11,17 +11,17 @@ import (
 // CrossEntropyLoss computes mean(-log(softmax(logits)[class])). logits [batch, C], target [batch] int64.
 // Returns scalar. Backward fills logits.Grad with (softmax - one_hot) / batch.
 func CrossEntropyLoss(logits, target *tensor.Tensor) (*tensor.Tensor, error) {
-	if logits.DType != core.Float32 || len(logits.Shape) != 2 {
+	if logits.DType() != core.Float32 || logits.NDim() != 2 {
 		return nil, nil
 	}
-	batch := logits.Shape[0]
-	C := logits.Shape[1]
-	be, err := backend.GetForDevice(logits.Storage.Device())
+	batch := logits.Shape()[0]
+	C := logits.Shape()[1]
+	be, err := backend.GetForDevice(logits.Storage().Device())
 	if err != nil {
 		return nil, err
 	}
-	logitsF := logits.Float32()
-	targetI := target.Int64()
+	logitsF := logits.ToFloat32Slice()
+	targetI := target.ToInt64Slice()
 
 	// Pre-compute softmax for each row (numerically stable)
 	softmax := make([]float32, batch*C)
@@ -56,15 +56,17 @@ func CrossEntropyLoss(logits, target *tensor.Tensor) (*tensor.Tensor, error) {
 		return nil, err
 	}
 
-	// Set Backward closure: when called, fills logits.Grad = (softmax - one_hot) / batch
-	scalar.Backward = func() {
+	// Set grad function: when called, fills logits.Grad = (softmax - one_hot) / batch
+	scalar.SetGradFn(func() {
 		// Allocate grad for logits
-		gradStorage, err2 := be.Alloc(batch * C * 4)
+		gradStorage, err2 := be.Alloc(batch * C * int(core.Float32.Size()))
 		if err2 != nil {
 			return
 		}
-		logits.Grad = tensor.New(gradStorage, logits.Shape, logits.Strides, core.Float32)
-		gradF := logits.Grad.Float32()
+		lg := tensor.NewTensor(gradStorage, logits.Shape(), core.Float32)
+		lg.SetRequiresGrad(true)
+		logits.SetGrad(lg)
+		gradF := logits.Grad().ToFloat32Slice()
 		for i := 0; i < batch; i++ {
 			t := targetI[i]
 			for j := 0; j < C; j++ {
@@ -74,7 +76,7 @@ func CrossEntropyLoss(logits, target *tensor.Tensor) (*tensor.Tensor, error) {
 				gradF[i*C+int(t)] -= 1.0 / float32(batch)
 			}
 		}
-	}
+	})
 
 	return scalar, nil
 }

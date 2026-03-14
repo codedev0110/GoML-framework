@@ -73,19 +73,19 @@ func (m *LLM) Parameters() []*tensor.Tensor {
 // ZeroGrad sets .Grad = nil on all parameters.
 func (m *LLM) ZeroGrad() {
 	for _, p := range m.Parameters() {
-		p.Grad = nil
+		p.SetGrad(nil)
 	}
 }
 
 // Forward runs the full model. indices [batch, seq] int64 -> logits [batch, seq, vocabSize].
 func (m *LLM) Forward(indices *tensor.Tensor) (*tensor.Tensor, error) {
-	if indices.DType != core.Int64 {
+	if indices.DType() != core.Int64 {
 		return nil, fmt.Errorf("indices must be int64")
 	}
-	if len(indices.Shape) != 2 {
+	if indices.NDim() != 2 {
 		return nil, fmt.Errorf("indices must be [batch, seq]")
 	}
-	batch, seq := indices.Shape[0], indices.Shape[1]
+	batch, seq := indices.Shape()[0], indices.Shape()[1]
 	x, err := m.Embedding.Forward(indices)
 	if err != nil {
 		return nil, err
@@ -125,9 +125,8 @@ func InitSmall(vocabSize, embedDim, numHeads, numLayers, maxSeqLen int) (*LLM, e
 	embTable, _ := be.Alloc(vocabSize * embedDim * 4)
 	be.Fill(embTable, vocabSize*embedDim, 0.01)
 	embShape := core.Shape{vocabSize, embedDim}
-	embStrides := core.ContiguousStrides(embShape, 4)
-	embTensor := tensor.New(embTable, embShape, embStrides, core.Float32)
-	embTensor.RequiresGrad = true
+	embTensor := tensor.NewTensor(embTable, embShape, core.Float32)
+	embTensor.SetRequiresGrad(true)
 	emb, _ := NewEmbedding(embTensor)
 	// Blocks
 	blocks := make([]*TransformerBlock, numLayers)
@@ -139,10 +138,10 @@ func InitSmall(vocabSize, embedDim, numHeads, numLayers, maxSeqLen int) (*LLM, e
 			be.Fill(w, out*in, 0.02)
 			b, _ := be.Alloc(out * 4)
 			be.Fill(b, out, 0)
-			wT := tensor.New(w, core.Shape{out, in}, core.ContiguousStrides(core.Shape{out, in}, 4), core.Float32)
-			wT.RequiresGrad = true
-			bT := tensor.New(b, core.Shape{out}, core.ContiguousStrides(core.Shape{out}, 4), core.Float32)
-			bT.RequiresGrad = true
+			wT := tensor.NewTensor(w, core.Shape{out, in}, core.Float32)
+			wT.SetRequiresGrad(true)
+			bT := tensor.NewTensor(b, core.Shape{out}, core.Float32)
+			bT.SetRequiresGrad(true)
 			return NewLinear(in, out, wT, bT)
 		}
 		q, _ := allocLin(embedDim, embedDim)
@@ -159,34 +158,34 @@ func InitSmall(vocabSize, embedDim, numHeads, numLayers, maxSeqLen int) (*LLM, e
 		be.Fill(w2, embedDim*hidden, 0.02)
 		b2, _ := be.Alloc(embedDim * 4)
 		be.Fill(b2, embedDim, 0)
-		w1T := tensor.New(w1, core.Shape{hidden, embedDim}, core.ContiguousStrides(core.Shape{hidden, embedDim}, 4), core.Float32)
-		w1T.RequiresGrad = true
-		b1T := tensor.New(b1, core.Shape{hidden}, core.ContiguousStrides(core.Shape{hidden}, 4), core.Float32)
-		b1T.RequiresGrad = true
+		w1T := tensor.NewTensor(w1, core.Shape{hidden, embedDim}, core.Float32)
+		w1T.SetRequiresGrad(true)
+		b1T := tensor.NewTensor(b1, core.Shape{hidden}, core.Float32)
+		b1T.SetRequiresGrad(true)
 		lin1, _ := NewLinear(embedDim, hidden, w1T, b1T)
-		w2T := tensor.New(w2, core.Shape{embedDim, hidden}, core.ContiguousStrides(core.Shape{embedDim, hidden}, 4), core.Float32)
-		w2T.RequiresGrad = true
-		b2T := tensor.New(b2, core.Shape{embedDim}, core.ContiguousStrides(core.Shape{embedDim}, 4), core.Float32)
-		b2T.RequiresGrad = true
+		w2T := tensor.NewTensor(w2, core.Shape{embedDim, hidden}, core.Float32)
+		w2T.SetRequiresGrad(true)
+		b2T := tensor.NewTensor(b2, core.Shape{embedDim}, core.Float32)
+		b2T.SetRequiresGrad(true)
 		lin2, _ := NewLinear(hidden, embedDim, w2T, b2T)
 		ffn := &FeedForward{Linear1: lin1, Linear2: lin2}
 		gamma, _ := be.Alloc(embedDim * 4)
 		be.Fill(gamma, embedDim, 1)
 		beta, _ := be.Alloc(embedDim * 4)
 		be.Fill(beta, embedDim, 0)
-		gT := tensor.New(gamma, core.Shape{embedDim}, core.ContiguousStrides(core.Shape{embedDim}, 4), core.Float32)
-		gT.RequiresGrad = true
-		bT := tensor.New(beta, core.Shape{embedDim}, core.ContiguousStrides(core.Shape{embedDim}, 4), core.Float32)
-		bT.RequiresGrad = true
+		gT := tensor.NewTensor(gamma, core.Shape{embedDim}, core.Float32)
+		gT.SetRequiresGrad(true)
+		bT := tensor.NewTensor(beta, core.Shape{embedDim}, core.Float32)
+		bT.SetRequiresGrad(true)
 		n1 := NewLayerNorm(gT, bT, 1e-5)
 		gamma2, _ := be.Alloc(embedDim * 4)
 		be.Fill(gamma2, embedDim, 1)
 		beta2, _ := be.Alloc(embedDim * 4)
 		be.Fill(beta2, embedDim, 0)
-		g2T := tensor.New(gamma2, core.Shape{embedDim}, core.ContiguousStrides(core.Shape{embedDim}, 4), core.Float32)
-		g2T.RequiresGrad = true
-		b2TN := tensor.New(beta2, core.Shape{embedDim}, core.ContiguousStrides(core.Shape{embedDim}, 4), core.Float32)
-		b2TN.RequiresGrad = true
+		g2T := tensor.NewTensor(gamma2, core.Shape{embedDim}, core.Float32)
+		g2T.SetRequiresGrad(true)
+		b2TN := tensor.NewTensor(beta2, core.Shape{embedDim}, core.Float32)
+		b2TN.SetRequiresGrad(true)
 		n2 := NewLayerNorm(g2T, b2TN, 1e-5)
 		blocks[L] = &TransformerBlock{Attn: attn, FFN: ffn, Norm1: n1, Norm2: n2}
 	}
@@ -195,20 +194,20 @@ func InitSmall(vocabSize, embedDim, numHeads, numLayers, maxSeqLen int) (*LLM, e
 	be.Fill(gammaF, embedDim, 1)
 	betaF, _ := be.Alloc(embedDim * 4)
 	be.Fill(betaF, embedDim, 0)
-	gFT := tensor.New(gammaF, core.Shape{embedDim}, core.ContiguousStrides(core.Shape{embedDim}, 4), core.Float32)
-	gFT.RequiresGrad = true
-	bFT := tensor.New(betaF, core.Shape{embedDim}, core.ContiguousStrides(core.Shape{embedDim}, 4), core.Float32)
-	bFT.RequiresGrad = true
+	gFT := tensor.NewTensor(gammaF, core.Shape{embedDim}, core.Float32)
+	gFT.SetRequiresGrad(true)
+	bFT := tensor.NewTensor(betaF, core.Shape{embedDim}, core.Float32)
+	bFT.SetRequiresGrad(true)
 	finalNorm := NewLayerNorm(gFT, bFT, 1e-5)
 	// Output head: embedDim -> vocabSize
 	wOut, _ := be.Alloc(vocabSize * embedDim * 4)
 	be.Fill(wOut, vocabSize*embedDim, 0.02)
 	bOut, _ := be.Alloc(vocabSize * 4)
 	be.Fill(bOut, vocabSize, 0)
-	wOutT := tensor.New(wOut, core.Shape{vocabSize, embedDim}, core.ContiguousStrides(core.Shape{vocabSize, embedDim}, 4), core.Float32)
-	wOutT.RequiresGrad = true
-	bOutT := tensor.New(bOut, core.Shape{vocabSize}, core.ContiguousStrides(core.Shape{vocabSize}, 4), core.Float32)
-	bOutT.RequiresGrad = true
+	wOutT := tensor.NewTensor(wOut, core.Shape{vocabSize, embedDim}, core.Float32)
+	wOutT.SetRequiresGrad(true)
+	bOutT := tensor.NewTensor(bOut, core.Shape{vocabSize}, core.Float32)
+	bOutT.SetRequiresGrad(true)
 	outHead, _ := NewLinear(embedDim, vocabSize, wOutT, bOutT)
 	return NewLLM(emb, blocks, finalNorm, outHead, vocabSize, embedDim, numLayers, maxSeqLen), nil
 }

@@ -43,7 +43,7 @@ func main() {
 		fail = true
 	} else {
 		results = append(results, result{"Tensor creation", true,
-			fmt.Sprintf("shape=%v dtype=%v elements=%d", input.Shape, input.DType, input.NumElements())})
+			fmt.Sprintf("shape=%v dtype=%v elements=%d", input.Shape(), input.DType(), input.NumElements())})
 	}
 
 	// -----------------------------------------------------------------------
@@ -69,7 +69,7 @@ func main() {
 	// Check RequiresGrad
 	allHaveGrad := true
 	for _, p := range params {
-		if !p.RequiresGrad {
+		if !p.RequiresGrad() {
 			allHaveGrad = false
 			break
 		}
@@ -91,7 +91,7 @@ func main() {
 		os.Exit(1)
 	}
 	expectedShape := fmt.Sprintf("[1 8 %d]", vocabSize)
-	actualShape := fmt.Sprintf("%v", logits.Shape)
+	actualShape := fmt.Sprintf("%v", logits.Shape())
 	shapeOK := actualShape == expectedShape
 	results = append(results, result{"Forward pass output shape", shapeOK,
 		fmt.Sprintf("expected=%s actual=%s", expectedShape, actualShape)})
@@ -100,7 +100,7 @@ func main() {
 	}
 
 	// Check outputs are finite
-	logitsF := logits.Float32()
+	logitsF := logits.ToFloat32Slice()
 	allFinite := true
 	for _, v := range logitsF {
 		if math.IsNaN(float64(v)) || math.IsInf(float64(v), 0) {
@@ -118,11 +118,11 @@ func main() {
 	// -----------------------------------------------------------------------
 	// 4. LOSS COMPUTATION
 	// -----------------------------------------------------------------------
-	batch := logits.Shape[0]
-	seqLen := logits.Shape[1]
-	C := logits.Shape[2]
+	batch := logits.Shape()[0]
+	seqLen := logits.Shape()[1]
+	C := logits.Shape()[2]
 
-	logitsFlat, err := logits.View(batch*seqLen, C)
+	logitsFlat, err := logits.View(core.Shape{batch * seqLen, C})
 	if err != nil {
 		results = append(results, result{"Flatten logits", false, err.Error()})
 		fail = true
@@ -156,7 +156,7 @@ func main() {
 		printReport(results, fail)
 		os.Exit(1)
 	}
-	lossVal := lossTensor.Float32()[0]
+	lossVal := lossTensor.ToFloat32Slice()[0]
 	lossFinite := !math.IsNaN(float64(lossVal)) && !math.IsInf(float64(lossVal), 0) && lossVal > 0
 	results = append(results, result{"Loss finite & positive", lossFinite,
 		fmt.Sprintf("loss=%.6f", lossVal)})
@@ -170,9 +170,9 @@ func main() {
 	nn.Backward(lossTensor)
 
 	// Check logits.Grad
-	logitsGradOK := logitsFlat.Grad != nil
+	logitsGradOK := logitsFlat.Grad() != nil
 	if logitsGradOK {
-		gradF := logitsFlat.Grad.Float32()
+		gradF := logitsFlat.Grad().ToFloat32Slice()
 		gradFinite := true
 		var sumGrad float64
 		for _, v := range gradF {
@@ -184,7 +184,7 @@ func main() {
 		}
 		results = append(results, result{"Logits gradient populated", gradFinite,
 			fmt.Sprintf("grad_shape=%v sum=%.6f first3=%.6f,%.6f,%.6f",
-				logitsFlat.Grad.Shape, sumGrad, gradF[0], gradF[1], gradF[2])})
+				logitsFlat.Grad().Shape(), sumGrad, gradF[0], gradF[1], gradF[2])})
 		if !gradFinite {
 			fail = true
 		}
@@ -199,11 +199,11 @@ func main() {
 	// -----------------------------------------------------------------------
 	be, _ := backend.GetForDevice(backend.CPU0)
 	for _, p := range params {
-		if p.Grad == nil {
-			gradStorage, _ := be.Alloc(p.NumElements() * 4)
-			p.Grad = tensor.New(gradStorage, p.Shape, core.ContiguousStrides(p.Shape, 4), core.Float32)
+		if p.Grad() == nil {
+			gradStorage, _ := be.Alloc(p.NumElements() * int(core.Float32.Size()))
+			p.SetGrad(tensor.NewTensor(gradStorage, p.Shape(), core.Float32))
 			// Fill with small gradient: 0.01
-			gf := p.Grad.Float32()
+			gf := p.Grad().ToFloat32Slice()
 			for i := range gf {
 				gf[i] = 0.01
 			}
@@ -211,7 +211,7 @@ func main() {
 	}
 	withGrad := 0
 	for _, p := range params {
-		if p.Grad != nil {
+		if p.Grad() != nil {
 			withGrad++
 		}
 	}
@@ -226,13 +226,13 @@ func main() {
 	// -----------------------------------------------------------------------
 	// Snapshot a parameter value before step
 	sampleParam := model.OutputHead.W
-	sampleBefore := sampleParam.Float32()[0]
+	sampleBefore := sampleParam.ToFloat32Slice()[0]
 
 	// Create AdamW optimizer with large LR to ensure visible change
 	opt := nn.NewAdamW(params, 0.1, 0.9, 0.999, 1e-8, 0.01)
 	opt.Step()
 
-	sampleAfter := sampleParam.Float32()[0]
+	sampleAfter := sampleParam.ToFloat32Slice()[0]
 	paramChanged := sampleBefore != sampleAfter
 	results = append(results, result{"Optimizer step (AdamW)", paramChanged,
 		fmt.Sprintf("OutputHead.W[0]: before=%.8f after=%.8f delta=%.8f",
@@ -242,14 +242,14 @@ func main() {
 	}
 
 	// Also verify embedding param changed
-	embBefore := model.Embedding.Table.Float32()[0]
+	embBefore := model.Embedding.Table.ToFloat32Slice()[0]
 	// Need to create new grads since Step consumed them conceptually
 	// Actually AdamW reads grad directly; let's check if emb param changed
 	// It should have changed since we set grad for it too
 	// Let's do a second step to confirm
-	embBeforeStep2 := model.Embedding.Table.Float32()[0]
+	embBeforeStep2 := model.Embedding.Table.ToFloat32Slice()[0]
 	opt.Step()
-	embAfterStep2 := model.Embedding.Table.Float32()[0]
+	embAfterStep2 := model.Embedding.Table.ToFloat32Slice()[0]
 	embChanged := embBeforeStep2 != embAfterStep2
 	results = append(results, result{"Embedding param updated", embChanged,
 		fmt.Sprintf("Table[0]: before=%.8f after=%.8f", embBeforeStep2, embAfterStep2)})
@@ -270,7 +270,7 @@ func main() {
 func countRequiresGrad(params []*tensor.Tensor) int {
 	c := 0
 	for _, p := range params {
-		if p.RequiresGrad {
+		if p.RequiresGrad() {
 			c++
 		}
 	}
