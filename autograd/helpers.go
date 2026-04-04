@@ -8,15 +8,15 @@ import (
 
 // ZeroGrad allocates gradient storage for t and fills with zero, if RequiresGrad.
 func ZeroGrad(t *tensor.Tensor) {
-	if !t.RequiresGrad() || t.Grad() != nil {
+	if !t.RequiresGrad || t.Grad != nil {
 		return
 	}
-	be, err := backend.GetForDevice(t.Storage().Device())
+	be, err := backend.GetForDevice(t.Storage.Device())
 	if err != nil {
 		return
 	}
-	byteLen := t.NumElements() * int(t.DType().Size())
-	if t.DType() != core.Float32 {
+	byteLen := t.NumElements() * int(t.DType.Size())
+	if t.DType != core.Float32 {
 		return
 	}
 	storage, err := be.Alloc(byteLen)
@@ -24,19 +24,19 @@ func ZeroGrad(t *tensor.Tensor) {
 		return
 	}
 	be.Fill(storage, t.NumElements(), 0)
-	grad := tensor.NewTensor(storage, t.Shape(), t.DType())
-	grad.SetRequiresGrad(true)
-	t.SetGrad(grad)
+	grad := tensor.New(storage, t.Shape, t.Strides, t.DType)
+	grad.RequiresGrad = true
+	t.Grad = grad
 }
 
 // AccumulateGrad adds grad into t.Grad (creating t.Grad if nil).
 func AccumulateGrad(t *tensor.Tensor, grad *tensor.Tensor) {
-	if t.Grad() == nil {
+	if t.Grad == nil {
 		ZeroGrad(t)
 	}
-	if t.Grad() == nil || grad == nil {
+	if t.Grad == nil || grad == nil {
 		return
 	}
-	be, _ := backend.GetForDevice(t.Storage().Device())
-	be.Add(t.Grad().Storage(), t.Grad().Storage(), grad.Storage(), t.Shape(), grad.Shape(), t.Grad().Strides(), grad.Strides(), grad.Shape())
+	be, _ := backend.GetForDevice(t.Storage.Device())
+	be.Add(t.Grad.Storage, t.Grad.Storage, grad.Storage, t.Shape, grad.Shape, t.Grad.Strides, grad.Strides, grad.Shape)
 }

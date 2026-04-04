@@ -1,7 +1,6 @@
 package train
 
 import (
-	"github.com/djeday123/goml/core"
 	"github.com/djeday123/goml/nn"
 	"github.com/djeday123/goml/tensor"
 )
@@ -25,14 +24,14 @@ func (t *Trainer) Step(inputs, targets *tensor.Tensor) (loss float32, err error)
 	}
 
 	// Flatten for loss: logits [batch, seq, C], targets [batch, seq]
-	batch, seq := logits.Shape()[0], logits.Shape()[1]
-	C := logits.Shape()[2]
+	batch, seq := logits.Shape[0], logits.Shape[1]
+	C := logits.Shape[2]
 
-	logitsFlat, err := logits.View(core.Shape{batch * seq, C})
+	logitsFlat, err := logits.View(batch*seq, C)
 	if err != nil {
 		return 0, err
 	}
-	targetsFlat, err := targets.View(core.Shape{batch * seq})
+	targetsFlat, err := targets.View(batch * seq)
 	if err != nil {
 		return 0, err
 	}
@@ -43,7 +42,7 @@ func (t *Trainer) Step(inputs, targets *tensor.Tensor) (loss float32, err error)
 	}
 
 	// Scalar loss
-	loss = lossTensor.ToFloat32Slice()[0]
+	loss = lossTensor.Float32()[0]
 
 	// Backward pass
 	nn.Backward(lossTensor)

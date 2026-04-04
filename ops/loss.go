@@ -9,11 +9,11 @@ import (
 // logits: [batch, numClasses], target: [batch] int64 indices.
 // Returns a scalar tensor. Backward fills logits.Grad with gradient.
 func CrossEntropyLoss(logits, target *tensor.Tensor) (*tensor.Tensor, error) {
-	if logits.DType() != core.Float32 || logits.NDim() != 2 {
+	if logits.DType != core.Float32 || len(logits.Shape) != 2 {
 		return nil, nil // placeholder
 	}
-	batch := logits.Shape()[0]
-	numClasses := logits.Shape()[1]
+	batch := logits.Shape[0]
+	numClasses := logits.Shape[1]
 	// Forward: softmax then -log(prob[target]). Numerically: log_softmax then NLL.
 	// log_softmax(x) = x - log(sum(exp(x))) = x - log_sum_exp(x).
 	// We'll do: probs = softmax(logits), loss = -mean(log(probs[i, target[i]])).

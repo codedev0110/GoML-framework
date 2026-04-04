@@ -14,7 +14,7 @@ import (
 // frameworks build a dependency graph and execute nodes in topologically
 // sorted order.
 func Backward(out *tensor.Tensor) {
-	if fn := out.GradFn(); fn != nil {
+	if fn := out.Backward; fn != nil {
 		fn()
 	}
 }

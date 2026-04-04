@@ -27,7 +27,7 @@ func NewAdamW(params []*tensor.Tensor, lr, beta1, beta2, eps, weightDecay float6
 	if eps == 0 {
 		eps = 1e-8
 	}
-	be, _ := backend.GetForDevice(params[0].Storage().Device())
+	be, _ := backend.GetForDevice(params[0].Storage.Device())
 	m := make([]backend.Storage, len(params))
 	v := make([]backend.Storage, len(params))
 	for i, p := range params {
@@ -53,12 +53,12 @@ func NewAdamW(params []*tensor.Tensor, lr, beta1, beta2, eps, weightDecay float6
 func (a *AdamW) Step() {
 	a.t++
 	for i, p := range a.params {
-		if p.Grad() == nil {
+		if p.Grad == nil {
 			continue
 		}
 		n := p.NumElements()
-		grad := p.Grad().ToFloat32Slice()
-		param := p.ToFloat32Slice()
+		grad := p.Grad.Float32()
+		param := p.Float32()
 		mF := backendStorageFloat32(a.m[i], n)
 		vF := backendStorageFloat32(a.v[i], n)
 		for j := 0; j < n; j++ {
