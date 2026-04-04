@@ -10,15 +10,15 @@ import (
 
 // AdamW implements Adam with decoupled weight decay.
 type AdamW struct {
-	params     []*tensor.Tensor
-	lr         float64
-	beta1      float64
-	beta2      float64
-	eps        float64
+	params      []*tensor.Tensor
+	lr          float64
+	beta1       float64
+	beta2       float64
+	eps         float64
 	weightDecay float64
-	t          int
-	m          []backend.Storage // first moment
-	v          []backend.Storage // second moment
+	t           int
+	m           []backend.Storage // first moment
+	v           []backend.Storage // second moment
 }
 
 // NewAdamW creates an AdamW optimizer. params are modified in place; they must have Grad set when Step() is called.
@@ -37,14 +37,14 @@ func NewAdamW(params []*tensor.Tensor, lr, beta1, beta2, eps, weightDecay float6
 		be.Fill(v[i], p.NumElements(), 0)
 	}
 	return &AdamW{
-		params:     params,
-		lr:         lr,
-		beta1:      beta1,
-		beta2:      beta2,
-		eps:        eps,
+		params:      params,
+		lr:          lr,
+		beta1:       beta1,
+		beta2:       beta2,
+		eps:         eps,
 		weightDecay: weightDecay,
-		m:          m,
-		v:          v,
+		m:           m,
+		v:           v,
 	}
 }
 

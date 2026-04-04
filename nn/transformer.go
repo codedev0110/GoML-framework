@@ -7,10 +7,10 @@ import (
 
 // TransformerBlock is Attention + residual + LayerNorm + FeedForward + residual + LayerNorm.
 type TransformerBlock struct {
-	Attn       *Attention
-	FFN        *FeedForward
-	Norm1      *LayerNorm
-	Norm2      *LayerNorm
+	Attn  *Attention
+	FFN   *FeedForward
+	Norm1 *LayerNorm
+	Norm2 *LayerNorm
 }
 
 // Forward runs the block. x [batch, seq, dim].

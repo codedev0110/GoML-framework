@@ -16,7 +16,7 @@ func init() {
 	backend.Register(&cpuBackend{})
 }
 
-func (b *cpuBackend) Name() string       { return "cpu" }
+func (b *cpuBackend) Name() string                   { return "cpu" }
 func (b *cpuBackend) DeviceType() backend.DeviceType { return backend.CPU }
 
 func (b *cpuBackend) Alloc(byteLen int) (backend.Storage, error) {
@@ -527,9 +527,9 @@ func (b *cpuBackend) ScaledDotProductAttention(dst, q, k, v backend.Storage, bat
 	dstF := floatSlice(dst, batch*heads*seq*headDim)
 	for bi := 0; bi < batch; bi++ {
 		for h := 0; h < heads; h++ {
-			qBase := (bi*heads+h)*seq*headDim
-			kBase := (bi*heads+h)*seq*headDim
-			vBase := (bi*heads+h)*seq*headDim
+			qBase := (bi*heads + h) * seq * headDim
+			kBase := (bi*heads + h) * seq * headDim
+			vBase := (bi*heads + h) * seq * headDim
 			// scores = Q @ K^T  [seq, seq]
 			scores := make([]float32, seq*seq)
 			for i := 0; i < seq; i++ {
@@ -563,7 +563,7 @@ func (b *cpuBackend) ScaledDotProductAttention(dst, q, k, v backend.Storage, bat
 				}
 			}
 			// out = scores @ V
-			outBase := (bi*heads+h)*seq*headDim
+			outBase := (bi*heads + h) * seq * headDim
 			for i := 0; i < seq; i++ {
 				for d := 0; d < headDim; d++ {
 					var s float32

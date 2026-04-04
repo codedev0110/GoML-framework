@@ -15,12 +15,12 @@ type (
 )
 
 const (
-	Float16   = core.Float16
-	Float32   = core.Float32
-	Float64   = core.Float64
-	BFloat16  = core.BFloat16
-	Int8      = core.Int8
-	Int16     = core.Int16
-	Int32     = core.Int32
-	Int64     = core.Int64
+	Float16  = core.Float16
+	Float32  = core.Float32
+	Float64  = core.Float64
+	BFloat16 = core.BFloat16
+	Int8     = core.Int8
+	Int16    = core.Int16
+	Int32    = core.Int32
+	Int64    = core.Int64
 )

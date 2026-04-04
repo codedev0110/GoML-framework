@@ -11,12 +11,12 @@ import (
 // Tensor is the core multi-dimensional array: storage + shape + strides + dtype.
 // Grad is set during backward; Backward is the gradient callback for autograd.
 type Tensor struct {
-	Storage  backend.Storage
-	Shape    core.Shape
-	Strides  core.Strides
-	DType    core.DType
-	Grad     *Tensor   // accumulated gradient (optional)
-	Backward func()    // called during backward pass (optional)
+	Storage      backend.Storage
+	Shape        core.Shape
+	Strides      core.Strides
+	DType        core.DType
+	Grad         *Tensor // accumulated gradient (optional)
+	Backward     func()  // called during backward pass (optional)
 	RequiresGrad bool
 }
 

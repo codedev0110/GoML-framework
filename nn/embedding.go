@@ -45,5 +45,53 @@ func (e *Embedding) Forward(indices *tensor.Tensor) (*tensor.Tensor, error) {
 	copy(outShape, indices.Shape)
 	outShape[len(outShape)-1] = embedDim
 	strides := core.ContiguousStrides(outShape, 4)
-	return tensor.New(outStorage, outShape, strides, core.Float32), nil
+	out := tensor.New(outStorage, outShape, strides, core.Float32)
+
+	// Store for backward
+	out.Backward = func() {
+		e.BackwardFunction(indices, out)
+	}
+
+	return out, nil
+}
+
+// BackwardFunction accumulates gradients to the embedding table.
+// Expects out.Grad to be set (gradient with respect to output).
+// We scatter gradients from output back to table[indices].
+func (e *Embedding) BackwardFunction(indices, out *tensor.Tensor) {
+	if out.Grad == nil {
+		return
+	}
+
+	be, err := backend.GetForDevice(e.Table.Storage.Device())
+	if err != nil {
+		return
+	}
+
+	embedDim := e.Table.Shape[1]
+	numEmbeddings := e.Table.Shape[0]
+
+	// Initialize table gradient if not present
+	if e.Table.Grad == nil {
+		tableGradSize := numEmbeddings * embedDim * 4
+		tableGradStorage, _ := be.Alloc(tableGradSize)
+		be.Fill(tableGradStorage, numEmbeddings*embedDim, 0)
+		e.Table.Grad = tensor.New(tableGradStorage, e.Table.Shape,
+			core.ContiguousStrides(e.Table.Shape, 4), core.Float32)
+	}
+
+	// Scatter gradients: for each index in indices, add out.Grad to table.Grad[index]
+	indicesI64 := indices.Int64()
+	outGradF := out.Grad.Float32()
+	tableGradF := e.Table.Grad.Float32()
+
+	indexCount := indices.NumElements()
+	for idx := 0; idx < indexCount; idx++ {
+		embIdx := int(indicesI64[idx])
+		if embIdx >= 0 && embIdx < numEmbeddings {
+			for d := 0; d < embedDim; d++ {
+				tableGradF[embIdx*embedDim+d] += outGradF[idx*embedDim+d]
+			}
+		}
+	}
 }

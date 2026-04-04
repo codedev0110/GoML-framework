@@ -33,7 +33,10 @@ func Int64FromBytes(b []byte) []int64 {
 
 // UintptrFromStorage returns the raw pointer and byte length for a storage.
 // Used to bridge tensor and backend.
-func UintptrFromStorage(storage interface{ Ptr() uintptr; ByteLen() int }) (uintptr, int) {
+func UintptrFromStorage(storage interface {
+	Ptr() uintptr
+	ByteLen() int
+}) (uintptr, int) {
 	return storage.Ptr(), storage.ByteLen()
 }
 

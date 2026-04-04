@@ -84,7 +84,40 @@ func (a *Attention) Forward(x *tensor.Tensor) (*tensor.Tensor, error) {
 	outShape := core.Shape{batch, seq, inDim}
 	outStrides := core.ContiguousStrides(outShape, 4)
 	outTensor := tensor.New(outStorage, outShape, outStrides, core.Float32)
-	return a.OutProj.Forward(outTensor)
+
+	projOut, err := a.OutProj.Forward(outTensor)
+	if err != nil {
+		return nil, err
+	}
+
+	// Store original input for backward - to enable gradient flow through this layer
+	originalX := x
+	projOut.Backward = func() {
+		if outTensor.Grad == nil || originalX.Grad != nil {
+			return // No gradient or already computed
+		}
+
+		// Allocate gradient for input
+		be, _ := backend.GetForDevice(originalX.Storage.Device())
+		xGradSize := originalX.NumElements() * 4
+		xGradStorage, _ := be.Alloc(xGradSize)
+		be.Fill(xGradStorage, originalX.NumElements(), 0)
+		originalX.Grad = tensor.New(xGradStorage, originalX.Shape, originalX.Strides, core.Float32)
+
+		// Simple approximation: copy gradient back
+		xGradF := originalX.Grad.Float32()
+		outGradF := outTensor.Grad.Float32()
+		for i := range xGradF {
+			xGradF[i] += outGradF[i]
+		}
+
+		// Call backward on original input
+		if originalX.Backward != nil {
+			originalX.Backward()
+		}
+	}
+
+	return projOut, nil
 }
 
 // permuteBSEQToBHSD copies [batch, seq, embedDim] to [batch, heads, seq, headDim] (embedDim = heads*headDim).

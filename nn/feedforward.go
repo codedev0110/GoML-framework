@@ -10,7 +10,7 @@ import (
 type FeedForward struct {
 	Linear1 *Linear // in -> hidden (e.g. 4x)
 	Linear2 *Linear // hidden -> in
-	SwiGLU  bool   // if true, use gate and up projection
+	SwiGLU  bool    // if true, use gate and up projection
 }
 
 // Forward runs the FFN. x shape [..., dim].

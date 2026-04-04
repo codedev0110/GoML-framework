@@ -10,9 +10,9 @@ import (
 
 // Linear is y = x @ W^T + bias. InSize, OutSize; W is [OutSize, InSize], bias [OutSize].
 type Linear struct {
-	W      *tensor.Tensor // [OutSize, InSize]
-	Bias   *tensor.Tensor // [OutSize]
-	InSize int
+	W       *tensor.Tensor // [OutSize, InSize]
+	Bias    *tensor.Tensor // [OutSize]
+	InSize  int
 	OutSize int
 }
 
@@ -60,5 +60,97 @@ func (l *Linear) Forward(x *tensor.Tensor) (*tensor.Tensor, error) {
 	be.Add(addStorage, outStorage, biasStorage, outShape, biasShape, outStrides, biasStrides, outShape)
 	be.Free(outStorage)
 	out := tensor.New(addStorage, outShape, outStrides, core.Float32)
+
+	// Store forward data for backward
+	out.Backward = func() {
+		l.BackwardFunction(x, out)
+	}
+
 	return out, nil
+}
+
+// BackwardFunction computes and accumulates gradients for weights and bias, and input.
+// Expects out.Grad to be set (gradient with respect to output).
+// dL/dW = dL/dOut^T @ x, dL/dBias = sum(dL/dOut), dL/dX = dL/dOut @ W
+func (l *Linear) BackwardFunction(x, out *tensor.Tensor) {
+	if out.Grad == nil {
+		return
+	}
+
+	be, err := backend.GetForDevice(out.Storage.Device())
+	if err != nil {
+		return
+	}
+
+	batch := x.NumElements() / l.InSize
+
+	// dL/dBias = sum(dL/dOut) over batch dimension (reduce axis 0)
+	// out.Grad shape: [batch, OutSize], reduce to [OutSize]
+	if l.Bias.Grad == nil {
+		biasGradSize := l.OutSize * 4
+		biasGradStorage, _ := be.Alloc(biasGradSize)
+		be.Fill(biasGradStorage, l.OutSize, 0)
+		l.Bias.Grad = tensor.New(biasGradStorage, core.Shape{l.OutSize}, core.ContiguousStrides(core.Shape{l.OutSize}, 4), core.Float32)
+	}
+
+	// Sum gradients over batch
+	biasGradF := l.Bias.Grad.Float32()
+	outGradF := out.Grad.Float32()
+	for b := 0; b < batch; b++ {
+		for o := 0; o < l.OutSize; o++ {
+			biasGradF[o] += outGradF[b*l.OutSize+o]
+		}
+	}
+
+	// dL/dW = dL/dOut^T @ x
+	// out.Grad: [batch, OutSize], x: [batch, InSize]
+	// dL/dW: [OutSize, InSize]
+	if l.W.Grad == nil {
+		wGradSize := l.OutSize * l.InSize * 4
+		wGradStorage, _ := be.Alloc(wGradSize)
+		be.Fill(wGradStorage, l.OutSize*l.InSize, 0)
+		l.W.Grad = tensor.New(wGradStorage, core.Shape{l.OutSize, l.InSize},
+			core.ContiguousStrides(core.Shape{l.OutSize, l.InSize}, 4), core.Float32)
+	}
+
+	// dW += dL/dOut^T @ x (manually compute since backend MatMul is transposed)
+	outGradF = out.Grad.Float32()
+	xF := x.Float32()
+	wGradF := l.W.Grad.Float32()
+
+	for o := 0; o < l.OutSize; o++ {
+		for i := 0; i < l.InSize; i++ {
+			grad := float32(0)
+			for b := 0; b < batch; b++ {
+				grad += outGradF[b*l.OutSize+o] * xF[b*l.InSize+i]
+			}
+			wGradF[o*l.InSize+i] += grad
+		}
+	}
+
+	// dL/dX = dL/dOut @ W [batch, OutSize] @ [OutSize, InSize] = [batch, InSize]
+	// Compute gradient for input x
+	if x.Grad == nil {
+		xGradSize := batch * l.InSize * 4
+		xGradStorage, _ := be.Alloc(xGradSize)
+		be.Fill(xGradStorage, batch*l.InSize, 0)
+		x.Grad = tensor.New(xGradStorage, x.Shape, core.ContiguousStrides(x.Shape, 4), core.Float32)
+	}
+
+	// dX += dOut @ W
+	xGradF := x.Float32()
+	for b := 0; b < batch; b++ {
+		for i := 0; i < l.InSize; i++ {
+			grad := float32(0)
+			for o := 0; o < l.OutSize; o++ {
+				grad += outGradF[b*l.OutSize+o] * wGradF[o*l.InSize+i]
+			}
+			xGradF[b*l.InSize+i] += grad
+		}
+	}
+
+	// Recursively call backward on input if it has a backward function
+	if x.Backward != nil {
+		x.Backward()
+	}
 }
